@@ -15,11 +15,35 @@ jobs:
           ref: ${{ github.event.client_payload.ref }}
           token: ${{ secrets.GH_PAT }}
 
+      - name: Report Build Status (Pending)
+        run: |
+          gh api --method POST /repos/${{ github.event.client_payload.source_repo }}/statuses/${{ github.event.client_payload.sha }} \
+            -f state='pending' \
+            -f target_url='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+            -f description='Flutter build in progress...' \
+            -f context='Remote Build Engine'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+          # Caching pub-cache tied to the specific source repo for better isolation and speed
+          pub-cache-key: pub-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}
+
+      - name: Cache Build Artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .dart_tool/
+            build/
+          # Key includes the specific commit SHA for exact matches, but falls back to the latest build for these dependencies
+          key: build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
+          restore-keys: |
+            build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
+            build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-
 
       - name: Build Web
         run: |
@@ -35,3 +59,23 @@ jobs:
           repository-name: ${{ github.event.client_payload.target_repo }}
           clean: true
           commit-message: "Deploy from ${{ github.event.client_payload.source_repo }}@${{ github.event.client_payload.sha }}"
+
+      - name: Report Build Status (Final)
+        if: always()
+        run: |
+          STATE="${{ job.status }}"
+          # Map GitHub Action status to GitHub Commit Status
+          case "$STATE" in
+            "success") STATUS="success"; DESC="Build and deploy successful";;
+            "failure") STATUS="failure"; DESC="Build or deploy failed";;
+            "cancelled") STATUS="error"; DESC="Build was cancelled";;
+            *) STATUS="error"; DESC="Build ended with unknown status";;
+          esac
+          
+          gh api --method POST /repos/${{ github.event.client_payload.source_repo }}/statuses/${{ github.event.client_payload.sha }} \
+            -f state="$STATUS" \
+            -f target_url='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+            -f description="$DESC" \
+            -f context='Remote Build Engine'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
