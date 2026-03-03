@@ -47,8 +47,23 @@ jobs:
 
       - name: Build Web
         run: |
+          REPO="${{ github.event.client_payload.target_repo }}"
+          NAME=$(echo "$REPO" | cut -d'/' -f2)
+          SUB_URL="${{ github.event.client_payload.sub_url }}"
+          PAYLOAD_BASE_HREF="${{ github.event.client_payload.base_href }}"
+          
+          # Priority: 1. Manual base_href, 2. sub_url, 3. Repo Name (Standard GH Pages)
+          if [ -n "$PAYLOAD_BASE_HREF" ]; then
+            BASE_HREF="$PAYLOAD_BASE_HREF"
+          elif [ -n "$SUB_URL" ]; then
+            BASE_HREF="/$NAME/$SUB_URL"
+          else
+            BASE_HREF="/$NAME/"
+          fi
+          
+          echo "Building for $BASE_HREF"
           flutter pub get
-          flutter build web --release
+          flutter build web --release --base-href "$BASE_HREF"
 
       - name: Deploy to Target Repo
         uses: JamesIves/github-pages-deploy-action@v4.7.2
@@ -57,7 +72,7 @@ jobs:
           branch: gh-pages
           folder: build/web
           repository-name: ${{ github.event.client_payload.target_repo }}
-          clean: true
+          target-folder: ${{ github.event.client_payload.sub_url }}
           commit-message: "Deploy from ${{ github.event.client_payload.source_repo }}@${{ github.event.client_payload.sha }}"
 
       - name: Report Build Status (Final)
@@ -76,7 +91,16 @@ jobs:
           REPO="${{ github.event.client_payload.target_repo }}"
           OWNER=$(echo "$REPO" | cut -d'/' -f1)
           NAME=$(echo "$REPO" | cut -d'/' -f2)
-          DEPLOY_URL="https://$OWNER.github.io/$NAME"
+          SUB_URL="${{ github.event.client_payload.sub_url }}"
+          SITE_URL="${{ github.event.client_payload.site_url }}"
+          
+          if [ -n "$SITE_URL" ]; then
+            DEPLOY_URL="$SITE_URL"
+          elif [ -n "$SUB_URL" ]; then
+            DEPLOY_URL="https://$OWNER.github.io/$NAME/$SUB_URL"
+          else
+            DEPLOY_URL="https://$OWNER.github.io/$NAME"
+          fi
           
           # Use DEPLOY_URL for success, fallback to action logs for failure
           TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
