@@ -71,10 +71,22 @@ jobs:
             "cancelled") STATUS="error"; DESC="Build was cancelled";;
             *) STATUS="error"; DESC="Build ended with unknown status";;
           esac
+
+          # Generate the target URL for the deployed site
+          REPO="${{ github.event.client_payload.target_repo }}"
+          OWNER=$(echo "$REPO" | cut -d'/' -f1)
+          NAME=$(echo "$REPO" | cut -d'/' -f2)
+          DEPLOY_URL="https://$OWNER.github.io/$NAME"
+          
+          # Use DEPLOY_URL for success, fallback to action logs for failure
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$STATUS" = "success" ]; then
+            TARGET_URL="$DEPLOY_URL"
+          fi
           
           gh api --method POST /repos/${{ github.event.client_payload.source_repo }}/statuses/${{ github.event.client_payload.sha }} \
             -f state="$STATUS" \
-            -f target_url='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+            -f target_url="$TARGET_URL" \
             -f description="$DESC" \
             -f context='Remote Build Engine'
         env:
