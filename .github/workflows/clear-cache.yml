@@ -1,0 +1,36 @@
+name: Manual Clear Cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      key_prefix:
+        description: 'Filter by Key Prefix (e.g. "pub-", "build-"). Leave empty to clear all.'
+        required: false
+        type: string
+
+jobs:
+  clear-cache:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete Caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PREFIX: ${{ inputs.key_prefix }}
+        run: |
+          echo "Listing caches for $REPO..."
+          
+          # Use gh api with pagination to get all cache IDs matching the prefix
+          # jq filter selects keys starting with the prefix (empty prefix matches all)
+          gh api --paginate -H "Accept: application/vnd.github+json" \
+            /repos/$REPO/actions/caches \
+            --jq ".actions_caches[] | select(.key | startswith(\"$PREFIX\")) | .id" | \
+          while read -r cache_id; do
+            echo "Deleting cache $cache_id..."
+            gh api --method DELETE -H "Accept: application/vnd.github+json" \
+              /repos/$REPO/actions/caches/$cache_id
+          done
+          
+          echo "Done."
