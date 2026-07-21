@@ -1,6 +1,8 @@
 name: Clear Deploy Run History
 
 on:
+  schedule:
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       keep_last:
@@ -19,7 +21,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          KEEP: ${{ inputs.keep_last }}
+          KEEP: ${{ inputs.keep_last || '0' }}
         run: |
           WORKFLOW="remote-deploy.yml"
 
