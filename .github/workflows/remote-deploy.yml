@@ -88,7 +88,7 @@ jobs:
           fi
 
           echo "Building for $BASE_HREF"
-          flutter pub get --quiet
+          flutter pub get 2>&1 | tail -1
           flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Deploy to Target Repo
@@ -223,7 +223,7 @@ jobs:
           PAYLOAD_BASE_HREF="${{ github.event.client_payload.base_href }}"
           BASE_HREF="${PAYLOAD_BASE_HREF:-/}"
           echo "Building with base-href: $BASE_HREF"
-          flutter pub get --quiet
+          flutter pub get 2>&1 | tail -1
           flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Verify Build Output
