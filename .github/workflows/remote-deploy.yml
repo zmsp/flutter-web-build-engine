@@ -2,12 +2,34 @@ name: Remote Flutter Build & Deploy
 
 on:
   repository_dispatch:
-    types: [trigger-build]
+    types: [trigger-build, trigger-cf-deploy]
 
 jobs:
+
+  # ─────────────────────────────────────────────────────────
+  # GitHub Pages deployment job
+  # Triggered by: repository_dispatch type "trigger-build"
+  #
+  # Required client_payload fields:
+  #   source_repo   – owner/repo to check out (e.g. "zmsp/myapp")
+  #   sha           – commit SHA (for status reporting)
+  #   ref           – branch / tag / SHA to checkout
+  #   target_repo   – owner/repo to deploy gh-pages to
+  #   sub_url       – sub-path inside target repo's gh-pages (optional)
+  #   base_href     – Flutter --base-href override (optional)
+  #   site_url      – deployed URL used in commit status (optional)
+  # ─────────────────────────────────────────────────────────
   build:
     runs-on: ubuntu-latest
+    if: github.event.action == 'trigger-build'
     steps:
+      - name: Mask sensitive secrets
+        # Masks GH_PAT before any step can print it (e.g. in Actions debug mode).
+        # GitHub also auto-redacts secrets.* references, but ::add-mask:: is the
+        # belt-and-suspenders guarantee that the raw value never leaks.
+        run: |
+          echo "::add-mask::${{ secrets.GH_PAT }}"
+
       - name: Checkout Source Repo
         uses: actions/checkout@v4
         with:
@@ -51,7 +73,7 @@ jobs:
           NAME=$(echo "$REPO" | cut -d'/' -f2)
           SUB_URL="${{ github.event.client_payload.sub_url }}"
           PAYLOAD_BASE_HREF="${{ github.event.client_payload.base_href }}"
-          
+
           # Priority: 1. Manual base_href, 2. sub_url, 3. Repo Name (Standard GH Pages)
           if [ -n "$PAYLOAD_BASE_HREF" ]; then
             BASE_HREF="$PAYLOAD_BASE_HREF"
@@ -60,7 +82,7 @@ jobs:
           else
             BASE_HREF="/$NAME/"
           fi
-          
+
           echo "Building for $BASE_HREF"
           flutter pub get
           flutter build web --release --base-href "$BASE_HREF"
@@ -93,7 +115,7 @@ jobs:
           NAME=$(echo "$REPO" | cut -d'/' -f2)
           SUB_URL="${{ github.event.client_payload.sub_url }}"
           SITE_URL="${{ github.event.client_payload.site_url }}"
-          
+
           if [ -n "$SITE_URL" ]; then
             DEPLOY_URL="$SITE_URL"
           elif [ -n "$SUB_URL" ]; then
@@ -101,17 +123,142 @@ jobs:
           else
             DEPLOY_URL="https://$OWNER.github.io/$NAME"
           fi
-          
+
           # Use DEPLOY_URL for success, fallback to action logs for failure
           TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ "$STATUS" = "success" ]; then
             TARGET_URL="$DEPLOY_URL"
           fi
-          
+
           gh api --method POST /repos/${{ github.event.client_payload.source_repo }}/statuses/${{ github.event.client_payload.sha }} \
             -f state="$STATUS" \
             -f target_url="$TARGET_URL" \
             -f description="$DESC" \
             -f context='Remote Build Engine'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
+  # ─────────────────────────────────────────────────────────
+  # Cloudflare Pages deployment job
+  # Triggered by: repository_dispatch type "trigger-cf-deploy"
+  #
+  # Required client_payload fields:
+  #   source_repo   – owner/repo to check out (e.g. "zmsp/periodcycle")
+  #   sha           – commit SHA (for status reporting)
+  #   ref           – branch / tag / SHA to checkout
+  #   project_name  – Cloudflare Pages project name (e.g. "periodcycle")
+  #   branch        – branch label shown in Cloudflare dashboard (optional,
+  #                   defaults to the dispatching ref name)
+  #   base_href     – Flutter --base-href override (optional, defaults to "/")
+  #   site_url      – deployed URL used in commit status (optional)
+  # ─────────────────────────────────────────────────────────
+  cloudflare-deploy:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'trigger-cf-deploy'
+    steps:
+      - name: Mask sensitive secrets
+        # IMPORTANT: masks all secret values immediately so they are redacted from ALL
+        # subsequent log lines, UI summaries, and annotations — including Actions debug mode.
+        run: |
+          echo "::add-mask::${{ secrets.GH_PAT }}"
+          echo "::add-mask::${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          echo "::add-mask::${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+
+      - name: Checkout Source Repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.client_payload.source_repo }}
+          ref: ${{ github.event.client_payload.ref }}
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Report Build Status (Pending)
+        run: |
+          gh api --method POST /repos/${{ github.event.client_payload.source_repo }}/statuses/${{ github.event.client_payload.sha }} \
+            -f state='pending' \
+            -f target_url='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+            -f description='Flutter build in progress (Cloudflare)...' \
+            -f context='Remote Build Engine / Cloudflare'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          pub-cache-key: pub-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}
+
+      - name: Cache Build Artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .dart_tool/
+            build/
+          key: build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
+          restore-keys: |
+            build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
+            build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-
+
+      - name: Build Flutter Web
+        run: |
+          PAYLOAD_BASE_HREF="${{ github.event.client_payload.base_href }}"
+          BASE_HREF="${PAYLOAD_BASE_HREF:-/}"
+          echo "Building with base-href: $BASE_HREF"
+          flutter pub get
+          flutter build web --release --base-href "$BASE_HREF"
+
+      - name: Verify Build Output
+        run: |
+          if [ ! -d "build/web" ]; then
+            echo "Error: build/web directory not found"
+            exit 1
+          fi
+          echo "Build output verified:"
+          ls -la build/web
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy to Cloudflare Pages
+        # Secrets are scoped only to this step via env vars.
+        # ::add-mask:: above ensures values never appear in any log.
+        run: |
+          CF_BRANCH="${{ github.event.client_payload.branch }}"
+          DEPLOY_BRANCH="${CF_BRANCH:-${{ github.ref_name }}}"
+          npx wrangler pages deploy build/web \
+            --project-name="${{ github.event.client_payload.project_name }}" \
+            --branch="$DEPLOY_BRANCH"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Report Build Status (Final)
+        if: always()
+        run: |
+          STATE="${{ job.status }}"
+          case "$STATE" in
+            "success") STATUS="success"; DESC="Build and Cloudflare deploy successful";;
+            "failure") STATUS="failure"; DESC="Build or Cloudflare deploy failed";;
+            "cancelled") STATUS="error"; DESC="Cloudflare build was cancelled";;
+            *) STATUS="error"; DESC="Build ended with unknown status";;
+          esac
+
+          SITE_URL="${{ github.event.client_payload.site_url }}"
+          PROJECT="${{ github.event.client_payload.project_name }}"
+          # Fallback: construct a standard Cloudflare Pages URL from the project name
+          DEPLOY_URL="${SITE_URL:-https://$PROJECT.pages.dev}"
+
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$STATUS" = "success" ]; then
+            TARGET_URL="$DEPLOY_URL"
+          fi
+
+          gh api --method POST /repos/${{ github.event.client_payload.source_repo }}/statuses/${{ github.event.client_payload.sha }} \
+            -f state="$STATUS" \
+            -f target_url="$TARGET_URL" \
+            -f description="$DESC" \
+            -f context='Remote Build Engine / Cloudflare'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}

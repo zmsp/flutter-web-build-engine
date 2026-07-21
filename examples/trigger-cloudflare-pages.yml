@@ -1,0 +1,66 @@
+name: Trigger Cloudflare Pages Deploy
+
+# Copy this file into your Flutter app repo at:
+#   .github/workflows/deploy.yml
+#
+# Required setup in YOUR repo:
+#   - Add a secret named GH_PAT with a Personal Access Token that has
+#     `repo` scope on zmsp/flutter-web-build-engine
+#
+# Required setup in zmsp/flutter-web-build-engine:
+#   - GH_PAT secret with repo scope on this repo
+#   - CLOUDFLARE_API_TOKEN secret (Cloudflare Pages: Edit permission)
+#   - CLOUDFLARE_ACCOUNT_ID secret (from Cloudflare dashboard sidebar)
+#
+# Your Cloudflare Pages project must already exist before the first deploy.
+# Create it once with:  npx wrangler pages project create <project-name>
+
+on:
+  push:
+    branches:
+      - master   # change to your default branch if needed
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Remote Cloudflare Deploy
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GH_PAT }}
+          repository: zmsp/flutter-web-build-engine
+          event-type: trigger-cf-deploy
+          client-payload: |
+            {
+              "source_repo":  "${{ github.repository }}",
+              "project_name": "your-cloudflare-project-name",
+              "branch":       "${{ github.ref_name }}",
+              "base_href":    "/",
+              "site_url":     "https://your-custom-domain.com",
+              "ref":          "${{ github.ref_name }}",
+              "sha":          "${{ github.sha }}"
+            }
+
+# ─── Payload field reference ──────────────────────────────────────────────────
+#
+#  source_repo   (required)  owner/repo of THIS app — the engine will check it out
+#  project_name  (required)  Cloudflare Pages project name (not the domain)
+#  sha           (required)  commit SHA — used to post status checks back here
+#  ref           (required)  branch/tag/SHA to check out (use github.ref_name)
+#
+#  branch        (optional)  branch label shown in the Cloudflare dashboard
+#                            defaults to the engine repo's ref_name
+#  base_href     (optional)  Flutter --base-href value (defaults to "/")
+#  site_url      (optional)  URL shown in the commit status check on success
+#                            defaults to https://<project_name>.pages.dev
+#
+# ─── Security notes ───────────────────────────────────────────────────────────
+#
+#  CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are stored ONLY in the
+#  engine repo's secrets — never in your app repo.
+#  The engine masks all three secrets (GH_PAT, CF token, CF account ID) with
+#  ::add-mask:: as the very first step so they never appear in any log line,
+#  UI summary, or annotation.
+#
+# ──────────────────────────────────────────────────────────────────────────────

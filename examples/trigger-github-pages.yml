@@ -1,0 +1,55 @@
+name: Trigger GitHub Pages Deploy
+
+# Copy this file into your Flutter app repo at:
+#   .github/workflows/deploy.yml
+#
+# Required setup in YOUR repo:
+#   - Add a secret named GH_PAT with a Personal Access Token that has
+#     `repo` scope on zmsp/flutter-web-build-engine
+#
+# Required setup in zmsp/flutter-web-build-engine:
+#   - GH_PAT secret with repo scope on both this repo and your target Pages repo
+
+on:
+  push:
+    branches:
+      - master   # change to your default branch if needed
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Remote Build Server
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GH_PAT }}
+          repository: zmsp/flutter-web-build-engine
+          event-type: trigger-build
+          client-payload: |
+            {
+              "source_repo": "${{ github.repository }}",
+              "target_repo": "zmsp/YOUR_PAGES_REPO",
+              "site_url":    "https://your-custom-domain.com",
+              "base_href":   "/",
+              "ref":         "${{ github.ref_name }}",
+              "sha":         "${{ github.sha }}"
+            }
+
+# ─── Payload field reference ──────────────────────────────────────────────────
+#
+#  source_repo  (required)  owner/repo of THIS app — the engine will check it out
+#  target_repo  (required)  owner/repo where gh-pages branch will be pushed
+#  sha          (required)  commit SHA — used to post status checks back here
+#  ref          (required)  branch/tag/SHA to check out (use github.ref_name)
+#
+#  base_href    (optional)  Flutter --base-href value. Defaults:
+#                             1. this field (highest priority)
+#                             2. /<repo-name>/<sub_url>/  (if sub_url is set)
+#                             3. /<repo-name>/
+#  sub_url      (optional)  sub-path inside the gh-pages branch
+#                           e.g. "app" → deploys to /target-repo/app/
+#  site_url     (optional)  URL shown in the commit status check on success
+#                           defaults to https://<owner>.github.io/<repo>
+#
+# ──────────────────────────────────────────────────────────────────────────────
