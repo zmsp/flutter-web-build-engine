@@ -251,12 +251,20 @@ jobs:
       - name: Deploy to Cloudflare Pages
         # Secrets are scoped only to this step via env vars.
         # ::add-mask:: above ensures values never appear in any log.
+        id: cf_deploy
         run: |
           CF_BRANCH="${{ github.event.client_payload.branch }}"
           DEPLOY_BRANCH="${CF_BRANCH:-${{ github.ref_name }}}"
-          npx --yes wrangler pages deploy build/web \
+          DEPLOY_OUTPUT=$(npx --yes wrangler pages deploy build/web \
             --project-name="${{ github.event.client_payload.project_name }}" \
-            --branch="$DEPLOY_BRANCH" 2>&1 | grep -E '(Deploying|Success|Error|✓|✗|https://)' || true
+            --branch="$DEPLOY_BRANCH" 2>&1)
+          echo "$DEPLOY_OUTPUT" | grep -E '(Deploying|Success|Error|✓|✗|https://)' || true
+          
+          # Extract deployed URL from Wrangler output (looks for https://...pages.dev)
+          DEPLOYED_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' | head -n 1)
+          if [ -n "$DEPLOYED_URL" ]; then
+            echo "cf_url=$DEPLOYED_URL" >> $GITHUB_OUTPUT
+          fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -273,10 +281,18 @@ jobs:
             *) STATUS="error"; DESC="Build ended with unknown status";;
           esac
 
+          CF_DEPLOYED_URL="${{ steps.cf_deploy.outputs.cf_url }}"
           SITE_URL="${{ github.event.client_payload.site_url }}"
           PROJECT="${{ github.event.client_payload.project_name }}"
-          # Fallback: construct a standard Cloudflare Pages URL from the project name
-          DEPLOY_URL="${SITE_URL:-https://$PROJECT.pages.dev}"
+          
+          # Priority: 1. Wrangler versioned/deployment URL output, 2. Explicit payload site_url, 3. Project fallback URL
+          if [ -n "$CF_DEPLOYED_URL" ]; then
+            DEPLOY_URL="$CF_DEPLOYED_URL"
+          elif [ -n "$SITE_URL" ]; then
+            DEPLOY_URL="$SITE_URL"
+          else
+            DEPLOY_URL="https://$PROJECT.pages.dev"
+          fi
 
           TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ "$STATUS" = "success" ]; then
