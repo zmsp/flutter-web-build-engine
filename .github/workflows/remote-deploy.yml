@@ -93,6 +93,10 @@ jobs:
 
           echo "Building for $BASE_HREF"
           flutter pub get 2>&1 | tail -1
+          if grep -q "build_runner:" pubspec.yaml 2>/dev/null; then
+            echo "Running build_runner..."
+            dart run build_runner build --delete-conflicting-outputs 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception|\[INFO\])' || true
+          fi
           flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Deploy to Target Repo
@@ -228,6 +232,10 @@ jobs:
           BASE_HREF="${PAYLOAD_BASE_HREF:-/}"
           echo "Building with base-href: $BASE_HREF"
           flutter pub get 2>&1 | tail -1
+          if grep -q "build_runner:" pubspec.yaml 2>/dev/null; then
+            echo "Running build_runner..."
+            dart run build_runner build --delete-conflicting-outputs 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception|\[INFO\])' || true
+          fi
           flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Verify Build Output
