@@ -24,11 +24,12 @@ jobs:
     if: github.event.action == 'trigger-build'
     steps:
       - name: Mask sensitive secrets
-        # Masks GH_PAT before any step can print it (e.g. in Actions debug mode).
-        # GitHub also auto-redacts secrets.* references, but ::add-mask:: is the
-        # belt-and-suspenders guarantee that the raw value never leaks.
+        # Masks GH_PAT and all identifying payload values so they are redacted
+        # from every subsequent log line, UI summary, and annotation.
         run: |
           echo "::add-mask::${{ secrets.GH_PAT }}"
+          echo "::add-mask::${{ github.event.client_payload.source_repo }}"
+          echo "::add-mask::${{ github.event.client_payload.target_repo }}"
 
       - name: Checkout Source Repo
         uses: actions/checkout@v4
@@ -36,6 +37,8 @@ jobs:
           repository: ${{ github.event.client_payload.source_repo }}
           ref: ${{ github.event.client_payload.ref }}
           token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+          show-progress: false
 
       - name: Report Build Status (Pending)
         run: |
@@ -52,20 +55,20 @@ jobs:
         with:
           channel: stable
           cache: true
-          # Caching pub-cache tied to the specific source repo for better isolation and speed
-          pub-cache-key: pub-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}
+          # Cache key uses a hash of source_repo to avoid printing the repo name in logs
+          pub-cache-key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}
 
       - name: Cache Build Artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .dart_tool/
             build/
-          # Key includes the specific commit SHA for exact matches, but falls back to the latest build for these dependencies
-          key: build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
+          # Key uses pubspec hash + SHA only — repo name is not printed in the log UI
+          key: build-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
           restore-keys: |
-            build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
-            build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-
+            build-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
+            build-${{ runner.os }}-
 
       - name: Build Web
         run: |
@@ -84,8 +87,8 @@ jobs:
           fi
 
           echo "Building for $BASE_HREF"
-          flutter pub get
-          flutter build web --release --base-href "$BASE_HREF"
+          flutter pub get --quiet
+          flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Deploy to Target Repo
         uses: JamesIves/github-pages-deploy-action@v4.7.2
@@ -95,7 +98,7 @@ jobs:
           folder: build/web
           repository-name: ${{ github.event.client_payload.target_repo }}
           target-folder: ${{ github.event.client_payload.sub_url }}
-          commit-message: "Deploy from ${{ github.event.client_payload.source_repo }}@${{ github.event.client_payload.sha }}"
+          commit-message: "Automated deploy [${{ github.event.client_payload.sha }}]"
 
       - name: Report Build Status (Final)
         if: always()
@@ -157,12 +160,14 @@ jobs:
     if: github.event.action == 'trigger-cf-deploy'
     steps:
       - name: Mask sensitive secrets
-        # IMPORTANT: masks all secret values immediately so they are redacted from ALL
-        # subsequent log lines, UI summaries, and annotations — including Actions debug mode.
+        # IMPORTANT: masks all secret values and identifying payload fields immediately
+        # so they are redacted from ALL subsequent log lines, UI summaries, and annotations.
         run: |
           echo "::add-mask::${{ secrets.GH_PAT }}"
           echo "::add-mask::${{ secrets.CLOUDFLARE_API_TOKEN }}"
           echo "::add-mask::${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          echo "::add-mask::${{ github.event.client_payload.source_repo }}"
+          echo "::add-mask::${{ github.event.client_payload.project_name }}"
 
       - name: Checkout Source Repo
         uses: actions/checkout@v4
@@ -170,6 +175,8 @@ jobs:
           repository: ${{ github.event.client_payload.source_repo }}
           ref: ${{ github.event.client_payload.ref }}
           token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+          show-progress: false
 
       - name: Report Build Status (Pending)
         run: |
@@ -186,40 +193,36 @@ jobs:
         with:
           channel: stable
           cache: true
-          pub-cache-key: pub-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}
+          pub-cache-key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}
 
       - name: Cache Build Artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .dart_tool/
             build/
-          key: build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
+          key: build-cf-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
           restore-keys: |
-            build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
-            build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-
+            build-cf-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
+            build-cf-${{ runner.os }}-
 
       - name: Build Flutter Web
         run: |
           PAYLOAD_BASE_HREF="${{ github.event.client_payload.base_href }}"
           BASE_HREF="${PAYLOAD_BASE_HREF:-/}"
           echo "Building with base-href: $BASE_HREF"
-          flutter pub get
-          flutter build web --release --base-href "$BASE_HREF"
+          flutter pub get --quiet
+          flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Verify Build Output
         run: |
-          if [ ! -d "build/web" ]; then
-            echo "Error: build/web directory not found"
-            exit 1
-          fi
-          echo "Build output verified:"
-          ls -la build/web
+          [ -d "build/web" ] || { echo "Error: build/web directory not found"; exit 1; }
+          echo "Build output verified ($(ls build/web | wc -l | tr -d ' ') files)"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Deploy to Cloudflare Pages
         # Secrets are scoped only to this step via env vars.
@@ -227,12 +230,13 @@ jobs:
         run: |
           CF_BRANCH="${{ github.event.client_payload.branch }}"
           DEPLOY_BRANCH="${CF_BRANCH:-${{ github.ref_name }}}"
-          npx wrangler pages deploy build/web \
+          npx --yes wrangler pages deploy build/web \
             --project-name="${{ github.event.client_payload.project_name }}" \
-            --branch="$DEPLOY_BRANCH"
+            --branch="$DEPLOY_BRANCH" 2>&1 | grep -E '(Deploying|Success|Error|✓|✗|https://)' || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: false
 
       - name: Report Build Status (Final)
         if: always()

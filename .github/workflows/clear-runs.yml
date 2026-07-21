@@ -1,0 +1,67 @@
+name: Clear Deploy Run History
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_last:
+        description: 'Number of most recent runs to keep (0 = delete all completed)'
+        required: false
+        default: '0'
+        type: string
+
+jobs:
+  clear-runs:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete completed remote-deploy runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KEEP: ${{ inputs.keep_last }}
+        run: |
+          WORKFLOW="remote-deploy.yml"
+
+          echo "Fetching completed runs for $WORKFLOW (keeping last $KEEP)..."
+
+          # Get IDs of all completed runs for this specific workflow, sorted newest-first
+          mapfile -t RUN_IDS < <(
+            gh api --paginate \
+              "/repos/$REPO/actions/workflows/$WORKFLOW/runs?status=completed&per_page=100" \
+              --jq '.workflow_runs[].id'
+          )
+
+          TOTAL=${#RUN_IDS[@]}
+          echo "Found $TOTAL completed run(s)."
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "Nothing to delete."
+            exit 0
+          fi
+
+          # Skip the first $KEEP entries (most recent)
+          START=$KEEP
+          DELETED=0
+
+          for i in "${!RUN_IDS[@]}"; do
+            if [ "$i" -lt "$START" ]; then
+              echo "Keeping run ${RUN_IDS[$i]} (within keep_last=$KEEP)"
+              continue
+            fi
+
+            RUN_ID="${RUN_IDS[$i]}"
+
+            # Delete the logs first (separate API — clears stored log content)
+            gh api --method DELETE "/repos/$REPO/actions/runs/$RUN_ID/logs" 2>/dev/null || true
+
+            # Delete the run record itself
+            if gh api --method DELETE "/repos/$REPO/actions/runs/$RUN_ID" 2>/dev/null; then
+              echo "Deleted run $RUN_ID"
+              DELETED=$((DELETED + 1))
+            else
+              echo "Could not delete run $RUN_ID (may already be gone)"
+            fi
+          done
+
+          echo "Done. Deleted $DELETED run(s), kept $KEEP."
