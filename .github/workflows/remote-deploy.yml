@@ -4,6 +4,10 @@ on:
   repository_dispatch:
     types: [trigger-build, trigger-cf-deploy]
 
+permissions:
+  actions: write
+  contents: write
+
 jobs:
 
   # ─────────────────────────────────────────────────────────
