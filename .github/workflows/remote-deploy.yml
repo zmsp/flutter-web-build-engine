@@ -65,11 +65,11 @@ jobs:
           path: |
             .dart_tool/
             build/
-          # Key uses pubspec hash + SHA only — repo name is not printed in the log UI
-          key: build-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
+          # Key uses source_repo + pubspec hash + SHA so caches are strictly isolated per repository
+          key: build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
           restore-keys: |
-            build-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
-            build-${{ runner.os }}-
+            build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
+            build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-
 
       - name: Build Web
         run: |
@@ -213,10 +213,10 @@ jobs:
           path: |
             .dart_tool/
             build/
-          key: build-cf-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
+          key: build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
           restore-keys: |
-            build-cf-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
-            build-cf-${{ runner.os }}-
+            build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
+            build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-
 
       - name: Build Flutter Web
         run: |
