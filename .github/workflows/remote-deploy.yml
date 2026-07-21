@@ -18,6 +18,7 @@ jobs:
   #   sub_url       – sub-path inside target repo's gh-pages (optional)
   #   base_href     – Flutter --base-href override (optional)
   #   site_url      – deployed URL used in commit status (optional)
+  #   persist_run   – set to true to keep this run in Actions history (optional, default: false)
   # ─────────────────────────────────────────────────────────
   build:
     runs-on: ubuntu-latest
@@ -141,6 +142,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
 
+      - name: Auto-cleanup run
+        # Deletes this run's logs and record by default.
+        # Pass persist_run: true in client_payload to skip.
+        if: always() && github.event.client_payload.persist_run != true
+        run: |
+          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs 2>/dev/null || true
+          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }} 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
   # ─────────────────────────────────────────────────────────
   # Cloudflare Pages deployment job
   # Triggered by: repository_dispatch type "trigger-cf-deploy"
@@ -154,6 +165,7 @@ jobs:
   #                   defaults to the dispatching ref name)
   #   base_href     – Flutter --base-href override (optional, defaults to "/")
   #   site_url      – deployed URL used in commit status (optional)
+  #   persist_run   – set to true to keep this run in Actions history (optional, default: false)
   # ─────────────────────────────────────────────────────────
   cloudflare-deploy:
     runs-on: ubuntu-latest
@@ -264,5 +276,15 @@ jobs:
             -f target_url="$TARGET_URL" \
             -f description="$DESC" \
             -f context='Remote Build Engine / Cloudflare'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Auto-cleanup run
+        # Deletes this run's logs and record by default.
+        # Pass persist_run: true in client_payload to skip.
+        if: always() && github.event.client_payload.persist_run != true
+        run: |
+          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs 2>/dev/null || true
+          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }} 2>/dev/null || true
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}

@@ -51,5 +51,7 @@ jobs:
 #                           e.g. "app" → deploys to /target-repo/app/
 #  site_url     (optional)  URL shown in the commit status check on success
 #                           defaults to https://<owner>.github.io/<repo>
+#  persist_run  (optional)  set to true to keep the engine's run in Actions
+#                           history; omit or set false to auto-delete after deploy
 #
 # ──────────────────────────────────────────────────────────────────────────────

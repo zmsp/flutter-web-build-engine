@@ -54,6 +54,8 @@ jobs:
 #  base_href     (optional)  Flutter --base-href value (defaults to "/")
 #  site_url      (optional)  URL shown in the commit status check on success
 #                            defaults to https://<project_name>.pages.dev
+#  persist_run   (optional)  set to true to keep the engine's run in Actions
+#                            history; omit or set false to auto-delete after deploy
 #
 # ─── Security notes ───────────────────────────────────────────────────────────
 #
