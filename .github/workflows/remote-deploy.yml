@@ -150,15 +150,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
 
-      - name: Auto-cleanup run
-        # Deletes this run's logs and record by default.
-        # Pass persist_run: true in client_payload to skip.
-        if: always() && github.event.client_payload.persist_run != true
-        run: |
-          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs 2>/dev/null || true
-          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }} 2>/dev/null || true
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
 
   # ─────────────────────────────────────────────────────────
   # Cloudflare Pages deployment job
@@ -307,12 +298,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
 
-      - name: Auto-cleanup run
-        # Deletes this run's logs and record by default.
-        # Pass persist_run: true in client_payload to skip.
-        if: always() && github.event.client_payload.persist_run != true
-        run: |
-          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs 2>/dev/null || true
-          gh api --method DELETE /repos/${{ github.repository }}/actions/runs/${{ github.run_id }} 2>/dev/null || true
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
