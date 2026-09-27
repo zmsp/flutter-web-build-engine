@@ -57,7 +57,7 @@ Use the [`peter-evans/repository-dispatch`](https://github.com/peter-evans/repos
 
 ```yaml
 - name: Trigger Remote Build
-  uses: peter-evans/repository-dispatch@v3
+  uses: peter-evans/repository-dispatch@v4
   with:
     token: ${{ secrets.GH_PAT }}   # PAT with repo scope on the engine repo
     repository: zmsp/flutter-web-build-engine
@@ -145,7 +145,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.GH_PAT }}
           repository: zmsp/flutter-web-build-engine
@@ -181,7 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.GH_PAT }}
           repository: zmsp/flutter-web-build-engine

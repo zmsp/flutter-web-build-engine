@@ -37,7 +37,7 @@ jobs:
           echo "::add-mask::${{ github.event.client_payload.target_repo }}"
 
       - name: Checkout Source Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ github.event.client_payload.source_repo }}
           ref: ${{ github.event.client_payload.ref }}
@@ -68,7 +68,6 @@ jobs:
         with:
           path: |
             .dart_tool/
-            build/
           # Key uses source_repo + pubspec hash + SHA so caches are strictly isolated per repository
           key: build-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
           restore-keys: |
@@ -97,10 +96,10 @@ jobs:
             echo "Running build_runner..."
             dart run build_runner build --delete-conflicting-outputs 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception|\[INFO\])' || true
           fi
-          flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
+          flutter build web --release --tree-shake-icons --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Deploy to Target Repo
-        uses: JamesIves/github-pages-deploy-action@v4.7.2
+        uses: JamesIves/github-pages-deploy-action@v4.9.0
         with:
           token: ${{ secrets.GH_PAT }}
           branch: gh-pages
@@ -181,7 +180,7 @@ jobs:
           echo "::add-mask::${{ github.event.client_payload.project_name }}"
 
       - name: Checkout Source Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ github.event.client_payload.source_repo }}
           ref: ${{ github.event.client_payload.ref }}
@@ -211,7 +210,6 @@ jobs:
         with:
           path: |
             .dart_tool/
-            build/
           key: build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-${{ github.event.client_payload.sha }}
           restore-keys: |
             build-cf-${{ runner.os }}-${{ github.event.client_payload.source_repo }}-${{ hashFiles('**/pubspec.lock', '**/pubspec.yaml') }}-
@@ -227,7 +225,7 @@ jobs:
             echo "Running build_runner..."
             dart run build_runner build --delete-conflicting-outputs 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception|\[INFO\])' || true
           fi
-          flutter build web --release --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
+          flutter build web --release --tree-shake-icons --base-href "$BASE_HREF" 2>&1 | grep -E '^(✓|✗|Building|Compiling|Font|Warning|Error|Exception)' || true
 
       - name: Verify Build Output
         run: |
@@ -235,7 +233,7 @@ jobs:
           echo "Build output verified ($(ls build/web | wc -l | tr -d ' ') files)"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
